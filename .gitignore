@@ -1,0 +1,18 @@
+# dependencies
+node_modules/
+
+# build outputs
+packages/*/dist/
+web/dist/
+
+# caches
+.cache/
+out/
+
+# Playwright
+web/playwright-report/
+web/test-results/
+web/blob-report/
+
+# misc
+.DS_Store

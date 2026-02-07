@@ -1,0 +1,14 @@
+[
+  {
+    "type": "rss",
+    "url": "https://hnrss.org/frontpage",
+    "tags": ["hn"],
+    "maxItems": 15
+  },
+  {
+    "type": "html",
+    "url": "https://example.com",
+    "tags": ["example"],
+    "maxItems": 1
+  }
+]
