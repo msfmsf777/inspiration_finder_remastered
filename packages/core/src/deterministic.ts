@@ -16,6 +16,13 @@ export function stableSortBy<T>(arr: T[], key: (t: T) => string): T[] {
     .map((x) => x.v);
 }
 
+const STOPWORDS = new Set([
+  'the','a','an','and','or','but','if','then','else','to','of','in','on','for','with','as','at','by','from','is','are','was','were','be','been','being',
+  'it','this','that','these','those','i','we','you','they','he','she','my','our','your','their','me','us','him','her','them',
+  'can','cannot','cant','could','should','would','will','wont','do','does','did','done','not','no','yes','very','really','just','so','too','more','most',
+  'keep','after','before','into','out','up','down','over','under','again','still',
+]);
+
 export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
@@ -23,7 +30,8 @@ export function tokenize(text: string): string[] {
     .replace(/[^a-z0-9\u4e00-\u9fff]+/gi, ' ')
     .split(/\s+/)
     .filter(Boolean)
-    .filter((t) => t.length >= 2);
+    .filter((t) => t.length >= 2)
+    .filter((t) => !STOPWORDS.has(t));
 }
 
 export function jaccard(a: Set<string>, b: Set<string>): number {

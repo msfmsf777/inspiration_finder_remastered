@@ -1,14 +1,20 @@
 [
   {
     "type": "rss",
-    "url": "https://hnrss.org/frontpage",
-    "tags": ["hn"],
-    "maxItems": 15
+    "url": "https://example.com/vtuber-tools.rss",
+    "tags": ["vtuber", "tools"],
+    "maxItems": 30
   },
   {
     "type": "html",
-    "url": "https://example.com",
-    "tags": ["example"],
+    "url": "https://example.com/blog/creator-tools-roundup",
+    "tags": ["roundup"],
     "maxItems": 1
+  },
+  {
+    "type": "reddit-rss",
+    "url": "https://www.reddit.com/r/vtuber/.rss",
+    "tags": ["reddit", "vtuber"],
+    "maxItems": 25
   }
 ]

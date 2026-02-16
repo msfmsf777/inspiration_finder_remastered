@@ -30,19 +30,27 @@ export default function App() {
   );
   const [result, setResult] = useState<RunResult | null>(null);
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>('dashboard');
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null);
   const [minScore, setMinScore] = useState(0);
+  const [autopilotOnly, setAutopilotOnly] = useState(false);
+  const [tagFilter, setTagFilter] = useState('');
 
   const fetcher = useMemo(() => makeBrowserFetcher(), []);
 
   async function run() {
     setError(null);
+    setProgress('Starting…');
     setRunning(true);
     try {
       saveJson('input', input);
-      const res = await runPipeline(input, fetcher);
+      const res = await runPipeline(input, fetcher, {
+        onProgress(e) {
+          setProgress(e.message);
+        },
+      });
       setResult(res);
       const entry = { runId: res.runId, createdAt: res.createdAt, market: input.market, mode: input.mode };
       const next = [entry, ...history].slice(0, 20);
@@ -53,10 +61,19 @@ export default function App() {
       setError(msg);
     } finally {
       setRunning(false);
+      setProgress('');
     }
   }
 
-  const opportunities = (result?.opportunities ?? []).filter((o) => o.score >= minScore);
+  const opportunities = (result?.opportunities ?? []).filter((o) => {
+    if (o.score < minScore) return false;
+    if (autopilotOnly && !o.buildability.autopilot.ok) return false;
+    if (tagFilter.trim()) {
+      const q = tagFilter.trim().toLowerCase();
+      if (!o.tags.some((t) => t.toLowerCase().includes(q))) return false;
+    }
+    return true;
+  });
   const selected = selectedOppId ? result?.opportunities.find((o) => o.id === selectedOppId) : null;
 
   return (
@@ -131,10 +148,11 @@ export default function App() {
               <div className="Hint">Supported types: rss, html, reddit-rss. (No X.com scraping in v0.)</div>
             </label>
 
-            <div className="Row" style={{ gap: 10 }}>
+            <div className="Row" style={{ gap: 10, alignItems: 'center' }}>
               <button onClick={run} disabled={running} data-testid="run-button">
                 {running ? 'Running…' : 'Run'}
               </button>
+              {running ? <span className="Hint" data-testid="run-progress">{progress || 'Working…'}</span> : null}
               <button
                 className="Secondary"
                 onClick={() => {
@@ -166,10 +184,20 @@ export default function App() {
           <section className="Card">
             <div className="Row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <h2>Opportunities</h2>
-              <label className="Inline">
-                Min score
-                <input type="number" value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} style={{ width: 90 }} />
-              </label>
+              <div className="Row" style={{ gap: 10, alignItems: 'center' }}>
+                <label className="Inline">
+                  Min score
+                  <input type="number" value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} style={{ width: 90 }} />
+                </label>
+                <label className="Inline">
+                  Tag contains
+                  <input value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={{ width: 140 }} />
+                </label>
+                <label className="Inline">
+                  <input type="checkbox" checked={autopilotOnly} onChange={(e) => setAutopilotOnly(e.target.checked)} />
+                  Autopilot yes
+                </label>
+              </div>
             </div>
 
             {!result ? <div className="Hint">Run a dry-run to see deterministic sample output.</div> : null}
@@ -252,6 +280,22 @@ export default function App() {
               <div className="Hint">
                 Autopilot: {selected.buildability.autopilot.ok ? 'yes' : 'no'} ({selected.buildability.autopilot.why})
               </div>
+
+              <div className="Divider" />
+              <h3>Competitors / references</h3>
+              {selected.competitorNotes.length === 0 ? (
+                <div className="Hint">None recorded.</div>
+              ) : (
+                <ul className="List">
+                  {selected.competitorNotes.map((c) => (
+                    <li key={c.url} className="ListItem">
+                      <a href={c.url} target="_blank" rel="noreferrer">
+                        {c.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
               <div className="Divider" />
               <h3>Room for improvement</h3>

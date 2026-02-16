@@ -73,7 +73,13 @@ async function main() {
   await ensureDir(cacheDir);
 
   const fetcher = makeFetcher(cacheDir);
-  const result = await runPipeline(input, fetcher);
+  const result = await runPipeline(input, fetcher, {
+    onProgress(e) {
+      const prefix = `[${e.stage}]`;
+      const extra = e.total !== undefined ? ` (${(e.done ?? 0) + 1}/${e.total})` : '';
+      process.stdout.write(`${prefix}${extra} ${e.message}\n`);
+    },
+  });
 
   const jsonPath = path.join(outDir, `report-${result.runId}.json`);
   const mdPath = path.join(outDir, `report-${result.runId}.md`);
