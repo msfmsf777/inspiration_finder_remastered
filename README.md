@@ -63,7 +63,10 @@ E2E (Playwright):
 ```bash
 npm run e2e
 ```
-Note: locally you may need system dependencies for Chromium. CI installs them via `playwright install --with-deps`.
+
+Local note: **E2E is optional locally** — in minimal containers/VMs you may see missing shared-library errors (e.g. `libnspr4.so`).
+CI installs the required OS deps via `playwright install --with-deps chromium`.
+If you need local E2E, run it in GitHub Actions, or use a Playwright-ready environment (e.g. a container/image that already includes Playwright dependencies).
 
 ## Determinism
 The sample dataset is committed at:

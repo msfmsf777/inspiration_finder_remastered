@@ -29,15 +29,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --include=dev
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-      - run: npm run e2e
+      - name: Install Playwright browsers + OS deps
+        run: npm -w web exec -- playwright install --with-deps chromium
+      - name: Run Playwright smoke tests
+        run: npm run e2e
       - name: Upload Playwright artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-artifacts
+          if-no-files-found: ignore
           path: |
             web/playwright-report
             web/test-results
             web/blob-report
+            web/test-results/**/trace.zip
