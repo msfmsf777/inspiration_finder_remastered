@@ -73,3 +73,7 @@ The sample dataset is committed at:
 - `packages/core/src/sample/sample-data.json`
 
 Dry-run mode loads this dataset to keep output stable for tests and CI.
+
+## Optional AI enrichment (OFF by default)
+See:
+- `docs/ai-enrichment.md`

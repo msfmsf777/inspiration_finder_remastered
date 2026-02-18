@@ -22,7 +22,8 @@ export async function loadDryRunItems(): Promise<RawItem[]> {
   // - In the browser build, bundlers can inline JSON via dynamic import.
   // - In Node, read from disk to avoid JSON import assertion issues.
   if (typeof window === 'undefined') {
-    const fs = await import('node:fs/promises');
+    // Avoid bundlers trying to externalize node builtins for the web build.
+    const fs = await import('node:' + 'fs/promises');
     const url = new URL('./sample/sample-data.json', import.meta.url);
     const raw = await fs.readFile(url, 'utf8');
     return (JSON.parse(raw) as { items: RawItem[] }).items;
@@ -162,15 +163,33 @@ function buildOpportunityFromCluster(cluster: Cluster, itemsById: Map<string, { 
   const painLabels = [...new Set(raws.flatMap((r) => r.pain))].sort();
   const who = 'Creators in the target market (streamers / content creators)';
 
-  const problemStatement = `People report ${painLabels.length ? painLabels.join(' + ') : 'recurring friction'} around: ${cluster.keywords
-    .slice(0, 5)
-    .join(', ')}`;
+  const keywords = cluster.keywords.slice(0, 5);
+  const painPhrase = painLabels.length ? painLabels.join(' + ') : 'recurring friction';
+  const problemStatement = `People report ${painPhrase} around: ${keywords.join(', ')}`;
+
+  const competitorQuery = encodeURIComponent(`${keywords.join(' ')} tool`);
+  const competitorNotes = [
+    {
+      label: 'Quick competitor scan (search)',
+      url: `https://www.google.com/search?q=${competitorQuery}`,
+    },
+    {
+      label: 'Open-source scan (GitHub search)',
+      url: `https://github.com/search?q=${encodeURIComponent(keywords.join(' '))}&type=repositories`,
+    },
+  ];
 
   const buildabilityReasons = [
-    'Data is public and can be processed deterministically',
-    'MVP can start with a simple workflow + exports',
+    'Public data sources + deterministic extraction (stable without AI keys)',
+    'Can ship as a workflow-first dashboard with exportable reports',
+    'Caching reduces repeated fetch cost',
   ];
-  const buildabilityScore = Math.max(3, Math.min(10, 6 + (painLabels.includes('bug') ? 1 : 0) - (painLabels.includes('cost') ? 1 : 0)));
+
+  // Heuristic: bugs/"not working" tend to have clearer acceptance criteria (+), pure cost complaints can be harder to solve (-)
+  const buildabilityScore = Math.max(
+    0,
+    Math.min(10, 6 + (painLabels.includes('bug') ? 2 : 0) + (painLabels.includes('blocking') ? 1 : 0) - (painLabels.includes('cost') ? 2 : 0)),
+  );
 
   const score = Math.round(
     100 * (0.55 * Math.min(1, raws.length / 6) + 0.25 * (mostRecent ? 1 : 0.5) + 0.2 * (painLabels.length ? 1 : 0.6)),
@@ -183,17 +202,21 @@ function buildOpportunityFromCluster(cluster: Cluster, itemsById: Map<string, { 
     whoItAffects: who,
     frequency: { count: raws.length, mostRecent },
     evidence,
-    competitorNotes: [],
-    roomForImprovement: 'Existing tools feel fragmented; opportunity for a focused, workflow-first experience.',
+    competitorNotes,
+    roomForImprovement:
+      'Opportunity to unify scattered solutions into a single, focused workflow with better onboarding and “proof” via citations.',
     buildability: {
       score0to10: buildabilityScore,
       reasons: buildabilityReasons,
       autopilot: {
-        ok: true,
-        why: 'Frontend + deterministic analysis + local exports; no external keys required for v0.',
+        ok: buildabilityScore >= 5,
+        why:
+          buildabilityScore >= 5
+            ? 'Within autopilot scope: deterministic pipeline + UI + exports, no external AI keys required.'
+            : 'Likely needs deeper domain research or hard dependencies; keep as manual research candidate.',
       },
     },
-    tags: cluster.tags,
+    tags: [...new Set([...cluster.tags, ...painLabels])].sort(),
   };
 }
 
@@ -215,7 +238,13 @@ export function toMarkdown(result: RunResult): string {
     lines.push(`- Who: ${opp.whoItAffects}`);
     lines.push(`- Frequency: ${opp.frequency.count} mentions` + (opp.frequency.mostRecent ? ` (most recent: ${opp.frequency.mostRecent})` : ''));
     lines.push(`- Buildability: ${opp.buildability.score0to10}/10 — ${opp.buildability.reasons.join('; ')}`);
+    lines.push(`- Autopilot: ${opp.buildability.autopilot.ok ? 'yes' : 'no'} — ${opp.buildability.autopilot.why}`);
     lines.push('');
+    if (opp.competitorNotes.length) {
+      lines.push('Competitors / references:');
+      for (const c of opp.competitorNotes) lines.push(`- [${c.label}](${c.url})`);
+      lines.push('');
+    }
     lines.push('Evidence:');
     for (const e of opp.evidence) {
       lines.push(`- [${e.title}](${e.url}) — ${e.excerpt}`);
@@ -225,19 +254,37 @@ export function toMarkdown(result: RunResult): string {
   return lines.join('\n');
 }
 
-export async function runPipeline(input: RunInput, fetcher: Fetcher): Promise<RunResult> {
+export type ProgressEvent = {
+  stage: 'load' | 'fetch' | 'extract' | 'cluster' | 'score' | 'done';
+  message: string;
+  done?: number;
+  total?: number;
+};
+
+export async function runPipeline(
+  input: RunInput,
+  fetcher: Fetcher,
+  opts?: { onProgress?: (e: ProgressEvent) => void },
+): Promise<RunResult> {
   const createdAt = new Date().toISOString();
   const runId = stableId([createdAt, input.market, input.mode, String(input.window.days)]);
+
+  opts?.onProgress?.({ stage: 'load', message: input.mode === 'dry' ? 'Loading sample dataset…' : 'Starting live fetch…' });
 
   const items: RawItem[] = [];
   if (input.mode === 'dry') {
     items.push(...(await loadDryRunItems()));
   } else {
+    const total = input.sources.length;
+    let done = 0;
     for (const s of input.sources) {
+      opts?.onProgress?.({ stage: 'fetch', message: `Fetching: ${s.url}`, done, total });
       items.push(...(await fetchSourceItems(fetcher, s)));
+      done++;
     }
   }
 
+  opts?.onProgress?.({ stage: 'extract', message: 'Extracting pain signals…' });
   const itemPain = items.map((raw) => ({
     id: stableId([raw.sourceUrl, raw.url, raw.title]),
     raw,
@@ -245,10 +292,15 @@ export async function runPipeline(input: RunInput, fetcher: Fetcher): Promise<Ru
   }));
   const itemsById = new Map(itemPain.map((x) => [x.id, { raw: x.raw, pain: x.pain }]));
 
+  opts?.onProgress?.({ stage: 'cluster', message: 'Clustering similar items…' });
   const clusters = clusterItems(items);
+
+  opts?.onProgress?.({ stage: 'score', message: 'Scoring + ranking opportunities…' });
   const opps = clusters.map((c) => buildOpportunityFromCluster(c, itemsById));
 
   const ranked = rankOpportunities(opps);
+
+  opts?.onProgress?.({ stage: 'done', message: 'Done.' });
 
   return {
     runId,
