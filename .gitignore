@@ -8,6 +8,7 @@ web/dist/
 # caches
 .cache/
 out/
+out_live_test*/
 
 # Playwright
 web/playwright-report/
